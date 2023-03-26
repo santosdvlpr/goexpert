@@ -1,6 +1,6 @@
 Desafio Go Expert - Client
 
 Executar o client:
-cd cotacao/client 
+cd goexpert/cotacao/client 
 client$> go run cmd/client.go
 
