@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -11,27 +12,25 @@ import (
 	"github.com/santosdvlpr/goexpert/cotacao/client/repositorio"
 )
 
-/*
-	 type Cotacao struct {
-		USDBRL struct {
-			Bid string `json:"bid"`
-		}
+type (
+	Tempo struct {
+		Valor time.Duration
 	}
-*/
-func buscaCotacao(ctx context.Context) (*http.Response, error) {
-	log.Println("busca cotação no server.go")
-	req, _ := http.NewRequestWithContext(ctx, "GET", "http://localhost:8080/cotacao", nil)
-	req.Header.Set("Accept", "application/json")
-	res, err := http.DefaultClient.Do(req)
+)
 
-	select {
-	case <-ctx.Done(): // chegou a 300 millisegundos e não recebeu resposta
-		return res, err
-	case <-time.After(600 * time.Millisecond): // chegou a  300 segundos e nao foi cancelado
-		return res, err
+func defineTempoDeEspera() *Tempo {
+	var tempo Tempo
+	result := rand.Intn(10)
+	if result <= 5 {
+		tempo.Valor = 300 * time.Millisecond
+
+	} else {
+		tempo.Valor = 200 * time.Nanosecond
 	}
 
+	return &tempo
 }
+
 func registraCotacao(res *http.Response) error {
 
 	// prepara a cotação
@@ -65,20 +64,35 @@ func registraCotacao(res *http.Response) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("Cotação %v adicionada em: cotacao.txt", cotacao.USDBRL.Bid)
+		log.Printf("Cotação %v adicionada COM SUCESSO em: cotacao.txt", cotacao.USDBRL.Bid)
 	}
 	return nil
+}
+func buscaCotacao(ctx context.Context, cancel context.CancelFunc) (*http.Response, error) {
+	log.Println("busca cotação no server.go")
+	defer cancel()
+	// context cancela em 300ms
+	req, _ := http.NewRequestWithContext(ctx, "GET", "http://localhost:8080/cotacao", nil)
+	req.Header.Set("Accept", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	return res, nil
 }
 
 func main() {
 	//pega a cotação do dia no server.go
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*900) // 300ms Foi mal !!!
-	defer cancel()
+	// o context vai expirar em  300ms ou 200 ns, conforme defineTempoDeEspera()
+	tempo := defineTempoDeEspera()
+	ctx, cancel := context.WithTimeout(context.Background(), tempo.Valor)
+	log.Println("Tempo de espera definido:", tempo.Valor)
+	//defer cancel()
 	//
-	res, err := buscaCotacao(ctx)
+	res, err := buscaCotacao(ctx, cancel)
 	if err != nil {
-		log.Fatalln("Fatal:", err)
+		log.Println("Fatal:", err)
 	} else {
 		// Registra em arquivo
 		err = registraCotacao(res)

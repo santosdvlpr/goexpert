@@ -13,13 +13,18 @@ import (
 	"github.com/santosdvlpr/goexpert/cotacao/server/repository"
 )
 
-const fileName = "sqlite.db"
+const fileName = "../sqlite.db"
 
-type Cotacao struct {
-	USDBRL struct {
-		Bid string `json:"bid"`
+type (
+	Cotacao struct {
+		USDBRL struct {
+			Bid string `json:"bid"`
+		}
 	}
-}
+	Mensagem struct {
+		Msg string `json:"msg"`
+	}
+)
 
 func ListaCotacoes() {
 	db := conectaDB()
@@ -72,50 +77,44 @@ func registraCotacao(data *Cotacao) {
 		panic(err) // foi mal
 	}
 }
-func buscaNaApiDeCotacao() (*http.Response, error) {
-	log.Println("busca na api")
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://economia.awesomeapi.com.br/json/last/USD-BRL", nil)
-	req.Header.Set("Accept", "application/json")
-
-	defer cancel()
-	go func() {
-		time.Sleep(time.Millisecond * 200) // 200ms foi mal
-		if err != nil {
-			log.Println(err)
-		}
-	}()
-
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		panic(err) // foi mal
-	}
-	return res, nil
-}
 
 func main() {
 	//println("remove banco")
 	//os.Remove(fileName)
 	executaMigracao()
 
-	http.HandleFunc("/cotacao", func(w http.ResponseWriter, r *http.Request) {
-		// busca cotação na api
-		res, _ := buscaNaApiDeCotacao()
-		var c Cotacao
-		json.NewDecoder(res.Body).Decode(&c)
-
-		// registrar cotacao no banco de dados
-		registraCotacao(&c)
-
-		// lista cotaçãoes registradas
-		ListaCotacoes()
-
-		//converte cotação de struct para json
-		encoder := json.NewEncoder(w)
-		_ = encoder.Encode(c)
-
-	})
+	http.HandleFunc("/cotacao", handler)
 	println("servidor disponível na porta 8080")
 	http.ListenAndServe(":8080", nil)
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	ctx := r.Context()
+	log.Println("busca na api")
+	//ctx, cancel := context.WithCancel(ctx)
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://economia.awesomeapi.com.br/json/last/USD-BRL", nil)
+	log.Print("Requisição iniciada")
+	defer log.Print("Requisição finalizada\n")
+	res, _ := http.DefaultClient.Do(req)
+
+	select {
+
+	case <-ctx.Done(): // Cancel pelo cliente
+		cancelado := &Mensagem{Msg: "Requisição cancelada pelo cliente..+++.+++..."}
+		data, _ := json.Marshal(cancelado)
+		w.Write(data)
+		log.Println("Requisição cancelada pelo cliente..+++.+++")
+	case <-time.After(20 * time.Millisecond): //
+		log.Println("Requisição Processado com sucesso")
+		var c Cotacao
+		json.NewDecoder(res.Body).Decode(&c)
+		// registrar cotacao no banco de dados
+		registraCotacao(&c)
+		// lista cotaçãoes registradas
+		//ListaCotacoes()
+		data, _ := json.Marshal(c)
+		w.Write(data)
+	}
+
 }
