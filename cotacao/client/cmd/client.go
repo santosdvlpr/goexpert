@@ -3,18 +3,24 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/santosdvlpr/goexpert/cotacao/client/repositorio"
 )
 
 type (
 	Tempo struct {
 		Valor time.Duration
+	}
+
+	Cota struct {
+		Bid string
+	}
+	Cotacao struct {
+		USDBRL Cota
 	}
 )
 
@@ -34,8 +40,10 @@ func defineTempoDeEspera() *Tempo {
 func registraCotacao(res *http.Response) error {
 
 	// prepara a cotação
-	var cotacao repositorio.Cotacao
+	var cotacao Cotacao
+
 	defer res.Body.Close()
+	json.NewDecoder(res.Body).Decode(&cotacao)
 	json.NewDecoder(res.Body).Decode(&cotacao)
 
 	var f *os.File
@@ -45,13 +53,13 @@ func registraCotacao(res *http.Response) error {
 			return err
 		}
 		defer f.Close()
-		valor := "Dolar:{" + cotacao.USDBRL.Bid + "}\n"
+		valor := fmt.Sprintf("Dolar:{%s}\n", cotacao.USDBRL.Bid)
 		_, err = f.WriteString(valor)
 		if err != nil {
 			return err
 
 		}
-		log.Printf("Cotação %v registrada em: cotacao.txt", cotacao.USDBRL.Bid)
+		log.Printf("Cotação %s registrada em: cotacao.txt", cotacao.USDBRL.Bid)
 
 	} else {
 		f, err := os.OpenFile("cotacao.txt", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
@@ -64,7 +72,7 @@ func registraCotacao(res *http.Response) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("Cotação %v adicionada COM SUCESSO em: cotacao.txt", cotacao.USDBRL.Bid)
+		log.Printf("Cotação %s adicionada COM SUCESSO em: cotacao.txt", cotacao.USDBRL.Bid)
 	}
 	return nil
 }
@@ -78,7 +86,7 @@ func buscaCotacao(ctx context.Context, cancel context.CancelFunc) (*http.Respons
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	//defer res.Body.Close()
 	return res, nil
 }
 
@@ -88,12 +96,13 @@ func main() {
 	tempo := defineTempoDeEspera()
 	ctx, cancel := context.WithTimeout(context.Background(), tempo.Valor)
 	log.Println("Tempo de espera definido:", tempo.Valor)
-	//defer cancel()
 	//
 	res, err := buscaCotacao(ctx, cancel)
+
 	if err != nil {
 		log.Println("Fatal:", err)
 	} else {
+		defer res.Body.Close()
 		// Registra em arquivo
 		err = registraCotacao(res)
 		if err != nil {

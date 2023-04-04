@@ -113,7 +113,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		registraCotacao(&c)
 		// lista cotaçãoes registradas
 		//ListaCotacoes()
-		data, _ := json.Marshal(c)
+		data, _ := json.Marshal(&c)
 		w.Write(data)
 	}
 
